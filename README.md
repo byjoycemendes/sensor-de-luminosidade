@@ -10,3 +10,8 @@ Sensor Foto Resistor LDR
 LED RGB  
 Buzzer CC 12mm TMB12A05  
 Resistor 220R 1/4W  
+
+# Documentação dos softwares utilizados  
+Arduino IDE: https://docs.arduino.cc/  
+Mosquitto: https://docs.arduino.cc/  
+MQTT Dash: https://vetru-apps.github.io/mqtt-dashboard-documentation/index.html
