@@ -1,29 +1,118 @@
-int LEDG = 19;
-int LEDR = 18;
-int BUZZER = 21;
+#include <WiFi.h>            // Biblioteca para Wi-Fi
+#include <PubSubClient.h>     // Biblioteca para MQTT
 
+// Configurações da rede Wi-Fi
+const char* ssid = "Bruno12!";      // Nome da sua rede Wi-Fi
+const char* password = "Bruno12!";  // Senha da sua rede Wi-Fi
+
+// Configurações do broker MQTT
+const char* mqttServer = "test.mosquitto.org";  // Endereço do broker
+const int mqttPort = 1883;                    // Porta padrão do MQTT
+const char* mqttUser = "";                    // Usuário (se necessário)
+const char* mqttPassword = "";                // Senha (se necessário)
+const char* mqttTopic = "test/mensagem";      // Tópico para publicar
+
+WiFiClient espClient;
+PubSubClient client(espClient);
+
+// Pinos do hardware
+int LEDG = 19;     // LED verde
+int LEDR = 18;     // LED vermelho
+int BUZZER = 21;   // Buzzer
+int LDRPin = 34;    // Pino do sensor LDR
+int limiar = 150;  // Limite de luminosidade ajustável
+
+// Função de callback para mensagens MQTT
+void callback(char* topic, byte* payload, unsigned int length) {
+  Serial.print("Mensagem recebida no tópico: ");
+  Serial.println(topic);
+
+  Serial.print("Mensagem: ");
+  for (int i = 0; i < length; i++) {
+    Serial.print((char)payload[i]);
+  }
+  Serial.println();
+}
+
+// Função para conectar ao Wi-Fi
+void connectWiFi() {
+  Serial.print("Conectando-se ao WiFi");
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("\nConectado ao WiFi");
+  Serial.println(WiFi.localIP()); // Exibe o IP do ESP32
+}
+
+// Função para conectar ao broker MQTT
+void connectMQTT() {
+  while (!client.connected()) {
+    Serial.println("Conectando ao broker MQTT...");
+    // Usando um Client ID único baseado no MAC Address
+    String clientId = "MeuESP32Client" + String(WiFi.macAddress());
+    if (client.connect(clientId.c_str(), mqttUser, mqttPassword)) {
+      Serial.println("Conectado ao broker MQTT");
+    } else {
+      Serial.print("Falha na conexão, rc=");
+      Serial.println(client.state());
+      delay(2000);
+    }
+  }
+}
 
 void setup() {
-  // put your setup code here, to run once:
   Serial.begin(9600);
+    // Configuração dos pinos
   pinMode(LEDG, OUTPUT);
   pinMode(LEDR, OUTPUT);
   pinMode(BUZZER, OUTPUT);
+  pinMode(LDRPin, INPUT);
+  
+  // Configuração do ADC (LDR)
+  analogReadResolution(12);           // Resolução de 12 bits (0-4095)
+  analogSetAttenuation(ADC_11db);     // Leitura até 3.3V
+
+  // Conectar ao Wi-Fi
+  connectWiFi();
+
+  // Configuração do broker MQTT
+  client.setServer(mqttServer, mqttPort);
+  client.setCallback(callback);
+
+  // Conectar ao broker MQTT
+  connectMQTT();
 }
 
 void loop() {
-  // put your main code here, to run repeatedly:
-  int LDR = analogRead(4);
+  client.loop(); // Mantém a conexão MQTT
+
+  // Leitura do valor do LDR
+  int LDR = analogRead(LDRPin);
+  float voltage = LDR * (3.3 / 4095.0); // Conversão para volts
+
+  // Exibe os valores lidos no Monitor Serial
+  Serial.print("Valor do LDR: ");
   Serial.println(LDR);
-  delay(100);
-  if(LDR > 15){
-    digitalWrite(LEDG, HIGH);
-    digitalWrite(LEDR, LOW);
-    digitalWrite(BUZZER, LOW);
-  }
-  else{
-    digitalWrite(LEDG, LOW);
+  Serial.print("Tensão no LDR (V): ");
+  Serial.println(voltage);
+
+  // Lógica para publicar mensagem no MQTT
+  if (LDR > limiar) {
+    // Se a luminosidade for alta, publica uma mensagem indicando que está tudo normal
+    client.publish(mqttTopic, "Luminosidade alta. Tudo normal!");
+      digitalWrite(LEDG, HIGH);
+      digitalWrite(LEDR, LOW);
+      digitalWrite(BUZZER, LOW);
+  } else {
+    // Se a luminosidade for baixa, publica um alerta
+    client.publish(mqttTopic, "Alerta: Baixa luminosidade detectada!");
+	digitalWrite(LEDG, LOW);
     digitalWrite(LEDR, HIGH);
     digitalWrite(BUZZER, HIGH);
   }
+
+  // Atraso para evitar sobrecarga no broker e no loop
+  delay(2000); // Aguarda 2 segundos antes de ler o LDR novamente
 }
